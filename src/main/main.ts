@@ -57,6 +57,11 @@ async function createMainWindow () {
 
    mainWindowState.manage(window);
    window.on('moved', saveWindowState);
+   // - should deleted in production
+   window.webContents.openDevTools();
+   // - should deleted in production
+   console.log();
+
 
    remoteMain.enable(window.webContents);
 

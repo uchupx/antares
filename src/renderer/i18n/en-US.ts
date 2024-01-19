@@ -356,6 +356,8 @@ export const enUS = {
       openAllConnections: 'Open all connections',
       openSettings: 'Open settings',
       runOrReload: 'Run or reload',
+      // new update
+      runSelected: 'Run selected',
       openFilter: 'Open filter',
       nextResultsPage: 'Next results page',
       previousResultsPage: 'Previous results page',

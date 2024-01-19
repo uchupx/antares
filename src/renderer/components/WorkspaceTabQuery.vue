@@ -309,6 +309,7 @@ const queryEditor: Ref<Component & { editor: Ace.Editor; $el: HTMLElement }> = r
 const queryAreaFooter: Ref<HTMLDivElement> = ref(null);
 const resizer: Ref<HTMLDivElement> = ref(null);
 const query = ref('');
+const queries = ref([]);
 const lastQuery = ref('');
 const isCancelling = ref(false);
 const showCancel = ref(false);
@@ -322,6 +323,8 @@ const editorHeight = ref(200);
 const isQuerySaved = ref(false);
 const isHistoryOpen = ref(false);
 const debounceTimeout = ref(null);
+const markerId = ref(null);
+const markerQuery = ref('');
 
 const workspace = computed(() => getWorkspace(props.connection.uid));
 const breadcrumbsSchema = computed(() => workspace.value.breadcrumbs.schema || null);
@@ -333,6 +336,50 @@ const databaseSchemas = computed(() => {
 });
 const hasResults = computed(() => results.value.length && results.value[0].rows);
 const hasAffected = computed(() => affectedCount.value || (!resultsCount.value && affectedCount.value !== null));
+
+watch(queryEditor, (val) => {
+   if (!val) return; 
+
+   const query = val.editor.session.getValue();
+
+   queries.value = [];
+
+   let q = query.split(';');
+   q.forEach(el => {
+      const range = queryEditor.value.editor.find(el.trim(), {
+         preventScroll: true,
+      });
+      if (range) {
+         queries.value.push({
+            line_start: range.start.row,
+            line_end: range.end.row,
+            query: el.trim()
+         });
+      }
+   });
+
+   val.editor.on('click', el => {
+      const pos = el.$pos.row;
+      const query = queries.value.find(el => {
+         return pos >= el.line_start && pos <= el.line_end;
+      });
+
+      if (query) {
+         const range = val.editor.find(query.query.trim(), {
+            preventScroll: true,
+         });
+
+         if (markerId.value) {
+            val.editor.session.removeMarker(markerId.value);
+            markerId.value = null;
+            markerQuery.value = '';
+         }
+         
+         markerId.value = val.editor.session.addMarker(range, 'ace_active-line', 'text');
+         markerQuery.value = query.query.trim();
+      }
+   })
+})
 
 watch(query, (val) => {
    clearTimeout(debounceTimeout.value);
@@ -386,6 +433,55 @@ const runQuery = async (query: string) => {
       if (selectedQuery) query = selectedQuery;
    }
 
+   clearTabData();
+   queryTable.value.resetSort();
+
+   try { // Query Data
+      const params = {
+         uid: props.connection.uid,
+         schema: selectedSchema.value,
+         tabUid: props.tab.uid,
+         autocommit: autocommit.value,
+         query
+      };
+
+      const { status, response } = await Schema.rawQuery(params);
+
+      if (status === 'success') {
+         results.value = Array.isArray(response) ? response : [response];
+         resultsCount.value = results.value.reduce((acc, curr) => acc + (curr.rows ? curr.rows.length : 0), 0);
+         durationsCount.value = results.value.reduce((acc, curr) => acc + curr.duration, 0);
+         affectedCount.value = results.value
+            .filter(result => result.report !== null)
+            .reduce((acc, curr) => {
+               if (acc === null) acc = 0;
+               return acc + (curr.report ? curr.report.affectedRows : 0);
+            }, null);
+
+         saveHistory(params);
+         if (!autocommit.value)
+            setUnsavedChanges({ uid: props.connection.uid, tUid: props.tabUid, isChanged: true });
+      }
+      else
+         addNotification({ status: 'error', message: response });
+   }
+   catch (err) {
+      addNotification({ status: 'error', message: err.stack });
+   }
+
+   isQuering.value = false;
+   lastQuery.value = query;
+};
+
+// new update
+const runSelectedQuery = async () => {
+   let query = null
+   const selectedQuery = queryEditor.value.editor.getSelectedText();
+   if (selectedQuery) query = selectedQuery;
+   else if (markerId.value) query = markerQuery.value;
+   else addNotification({ status: 'error', message: 'No query selected' });
+
+   isQuering.value = true;
    clearTabData();
    queryTable.value.resetSort();
 
@@ -606,6 +702,13 @@ const reloadListener = () => {
       runQuery(query.value);
 };
 
+// new update
+const runSelectedListener = () => {
+   const hasModalOpen = !!document.querySelectorAll('.modal.active').length;
+   if (props.isSelected && !hasModalOpen)
+      runSelectedQuery();
+};
+
 const formatListener = () => {
    const hasModalOpen = !!document.querySelectorAll('.modal.active').length;
    if (props.isSelected && !hasModalOpen)
@@ -638,6 +741,7 @@ onMounted(() => {
    ipcRenderer.on('kill-query', killQueryListener);
    ipcRenderer.on('clear-query', clearQueryListener);
    ipcRenderer.on('query-history', historyListener);
+   ipcRenderer.on('run-selected', runSelectedListener);
 
    localResizer.addEventListener('mousedown', (e: MouseEvent) => {
       e.preventDefault();

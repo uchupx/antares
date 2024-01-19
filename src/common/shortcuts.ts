@@ -16,7 +16,9 @@ export const shortcutEvents: { [key: string]: { l18n: string; l18nParam?: string
    'save-content': { l18n: 'application.saveContent' },
    'create-connection': { l18n: 'connection.createNewConnection' },
    'open-settings': { l18n: 'application.openSettings' },
-   'open-scratchpad': { l18n: 'application.openScratchpad' }
+   'open-scratchpad': { l18n: 'application.openScratchpad' },
+   // new update
+   'run-selected': { l18n: 'application.runSelected', context: 'tab' }
 };
 
 interface ShortcutRecord {
@@ -119,7 +121,13 @@ const shortcuts: ShortcutRecord[] = [
       event: 'toggle-console',
       keys: ['CommandOrControl+`'],
       os: ['darwin', 'linux', 'win32']
-   }
+   },
+      // new update
+      {
+         event: 'run-selected',
+         keys: ['CommandOrControl+Enter'],
+         os: ['darwin', 'linux', 'win32']
+      }
 ];
 
 for (let i = 1; i <= 9; i++) {
